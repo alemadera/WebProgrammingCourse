@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <title>Laptops Registradas</title>
+    <style>
+        body { font-family: Arial; margin: 40px; background: #f8f8f8; }
+        h1 { color: #333; }
+        table { border-collapse: collapse; width: 100%; background: white; }
+        th, td { padding: 10px; border: 1px solid #ccc; text-align: left; }
+        th { background-color: #444; color: #fff; }
+    </style>
+    </head>
+    <body>
+    <h1>Listado de Laptops</h1>
+    <table>
+        <thead>
+        <tr>
+            <th>Marca</th>
+            <th>Modelo</th>
+            <th>Procesador</th>
+            <th>RAM</th>
+            <th>Precio</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for laptop in laptops %}
+        <tr>
+            <td>{{ laptop.marca }}</td>
+            <td>{{ laptop.modelo }}</td>
+            <td>{{ laptop.procesador }}</td>
+            <td>{{ laptop.ram }}</td>
+            <td>{{ laptop.precio }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </body>
+    </html>
