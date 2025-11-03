@@ -1,6 +1,69 @@
 from flask import Flask, jsonify, request
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_jwt_extended import (
+    JWTManager, create_access_token, jwt_required, get_jwt_identity
+)
+from datetime import timedelta
 
 app = Flask(__name__)
+
+
+# Configuracion JWT
+app.config["JWT_SECRET_KEY"] = "super-secret-key"
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
+jwt = JWTManager(app)
+
+
+# Usuarios predefinidos
+users = [
+    {"username": "cliente1", "password": generate_password_hash("1234"), "role": "client"},
+    {"username": "manager1", "password": generate_password_hash("1234"), "role": "manager"},
+    {"username": "admin1", "password": generate_password_hash("1234"), "role": "admin"},
+]
+
+
+# Login (POST)
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+
+    user = next((u for u in users if u["username"] == username), None)
+    if not user or not check_password_hash(user["password"], password):
+        return jsonify({"msg": "Credenciales inválidas"}), 401
+
+    access_token = create_access_token(
+        identity=str(user["username"]),
+        additional_claims={"role": user["role"]}
+    )
+    return jsonify({"msg": "Login exitoso", "token": access_token}), 200
+
+
+# Endpoint para crear nuevos usuarios (solo admin)
+@app.route("/add_user", methods=["POST"])
+@jwt_required()
+def add_user():
+    current_user = get_jwt_identity()
+    if current_user["role"] != "admin":
+        return jsonify({"msg": "No autorizado. Solo un administrador puede crear usuarios."}), 403
+
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+    role = data.get("role")
+
+    if not username or not password or not role:
+        return jsonify({"msg": "Faltan campos requeridos"}), 400
+
+    if any(u["username"] == username for u in users):
+        return jsonify({"msg": "El usuario ya existe"}), 400
+
+    new_user = {"username": username, "password": generate_password_hash(password), "role": role}
+    users.append(new_user)
+
+    return jsonify({"msg": "Usuario creado exitosamente", "usuario": new_user}), 201
+
 
 # Diccionarios: 5 laptops predefinidas
 laptops = [
@@ -46,8 +109,10 @@ laptops = [
         }
 ]
 
-# Endpoint: obtener laptop por ID
+
+# Endpoint: obtener laptop por ID (acceso solo con token)
 @app.route("/laptops/<int:laptop_id>", methods=["GET"])
+@jwt_required()
 def get_laptop(laptop_id):
     ans = list(filter(lambda x: x["id"] == int(laptop_id), laptops))
     if not ans:
@@ -55,8 +120,9 @@ def get_laptop(laptop_id):
     return ans[0], 200
 
 
-# Endpoint: obtener las laptops con filtros
+# Endpoint: obtener las laptops con filtros (solo clientes autenticados)
 @app.route("/laptops", methods=["GET"])
+@jwt_required()
 def get_all_laptops():
 
     # Obtener query parameters
@@ -68,12 +134,12 @@ def get_all_laptops():
 
     ans = laptops
 
-    #fultro por marca
+    # Filtro por marca
     if marca_param:
         ans = list(filter(lambda x: x["marca"].lower() == marca_param.lower(), ans))
         print(f"Filtrado por marca: {ans}")
     
-    #filtro por procesador
+    # Filtro por procesador
     if procesador_param:
         ans = list(filter(lambda x: x["procesador"].lower() == procesador_param.lower(), ans))
         print(f"Filtrado por procesador: {ans}")
@@ -83,18 +149,23 @@ def get_all_laptops():
         ans = list(filter(lambda x: x["ram"].lower() == ram_param.lower(), ans))
         print(f"Filtrado por ram: {ans}")
     
-    # Chequear si hay resultados
     if not ans:
         return {"error": "No se encontraron laptops con los filtros proporcionados"}, 404
     
     return ans, 200
 
 
-# Endpoint: agregar una laptop
+# Endpoint: agregar una laptop (solo manager o admin)
 @app.route("/laptops", methods=["POST"])
+@jwt_required()
 def add_laptop():
-    new_laptop = request.get_json()
 
+    current_user = get_jwt_identity()
+    if current_user["role"] not in ["manager", "admin"]:
+        return jsonify({"msg": "No autorizado. Solo manager o admin pueden agregar laptops."}), 403
+
+    new_laptop = request.get_json()
+    
     # validar datos
     campos_requeridos = ["marca", "modelo", "procesador", "ram", "precio"]
     for campo in campos_requeridos:
@@ -115,14 +186,18 @@ def add_laptop():
     laptops.append(new_laptop)
     print(f"Laptop agregada: {new_laptop}")
 
-    return {"mensaje": "Laptop agregado", "Laptop": new_laptop}, 201
+    return {"mensaje": "Laptop agregada", "Laptop": new_laptop}, 201
 
 
-# Endpoint: eliminar una laptop por ID
+# Endpoint: eliminar una laptop (solo admin)
 @app.route("/laptops/<int:laptop_id>", methods=["DELETE"])
+@jwt_required()
 def delete_laptop(laptop_id):
-    ans = list(filter(lambda x: x["id"] == int(laptop_id), laptops))
+    current_user = get_jwt_identity()
+    if current_user["role"] != "admin":
+        return jsonify({"msg": "No autorizado. Solo admin puede eliminar laptops."}), 403
 
+    ans = list(filter(lambda x: x["id"] == int(laptop_id), laptops))
     if not ans:
         return {"error": "El laptop no existe"}, 404    
     laptops.remove(ans[0])
@@ -137,3 +212,4 @@ if __name__ == "__main__":
         port=8003,
         debug=True
     )
+    
